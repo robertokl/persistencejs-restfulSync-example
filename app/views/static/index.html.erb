@@ -1,0 +1,114 @@
+Count: <span id="count"></span><br/>
+<span id="names_header">Clientes:</span>
+<ul id="names">
+</ul><br/>
+<fieldset>
+  <legend>Novo Cliente</legend>
+  <form id="new_client_form">
+    <label for="name">Nome: </label><input name="name" type="text"/><br/>
+    <label for="address">Endereço: </label><input name="address" type="text"/><br/>
+    <input type="submit" value="Enviar"/>
+  </form>
+</fieldset>
+<script>
+  function count() {
+    Client.all().count(function(x) {
+      $("#count").html(x);
+    });
+  }
+  function names() {
+    var names = $("#names");
+    names.html('');
+    Client.all().forEach(function(client){
+      var li = $("<li/>", {
+        class: "client",
+        "data-client-id": client.id,
+        "data-name": client.name(),
+        "data-address": client.address(),
+        html: client.name() + " (" + client.address() + ") "
+      });
+      li.one("click", startUpdatingClient);
+      var del = $("<a/>", {href: "#", class: "delete", html: "X"});
+      del.click(deleteClient);
+      del.appendTo(li);
+      li.appendTo(names);
+    });
+  }
+  function createClient(form) {
+    var data = form.serializeHash();
+    var client = new Client(data);
+    persistence.add(client);
+    persistence.flush();
+    syncAll(updateAllDom);
+    form.find("input[type='text']").each(function(i, el){
+      $(el).val("");
+    });
+  }
+  function syncAll(callback) {
+    console.log("Starting sync...");
+    Client.syncAll(function(){
+      console.log("Sync done.")
+      if(callback){
+        console.log("Calling Callback...");
+        callback();
+      }
+    });
+  }
+  function updateAllDom() {
+    names();
+    count();
+  }
+  function deleteClient(e) {
+    e.preventDefault();
+    Client.load($(this).parents("li").data("client-id"), function(client) {
+      persistence.remove(client);
+      persistence.flush();
+      syncAll(updateAllDom);
+    });
+  }
+  function startUpdatingClient(e) {
+    var form = $("<form/>");
+    var nameInput = $("<input/>", {
+      name: "name",
+      type: "text",
+      value: $(this).data("name")
+    });
+    nameInput.appendTo(form);
+    var addressInput = $("<input/>", {
+      name: "address",
+      type: "text",
+      value: $(this).data("address")
+    });
+    addressInput.appendTo(form);
+    var submit = $("<input type=\"submit\" value=\"Salvar\"/>")
+    submit.appendTo(form);
+    $(this).html(form);
+    nameInput.focus();
+    form.submit(updateClient);
+  }
+  function updateClient(e) {
+    e.preventDefault();
+    var form = $(this);
+    Client.load($(this).parents("li").data("client-id"), function(client) {
+      client.name(form.find("input[name=name]").val());
+      client.address(form.find("input[name=address]").val());
+      persistence.add(client);
+      persistence.flush();
+      syncAll(updateAllDom);
+    });
+  }
+  $(function(){
+    $("#count").click(function(){ 
+      syncAll(count);
+    });
+    $("#names_header").click(function(){ 
+      syncAll(names);
+    });
+    syncAll(updateAllDom);
+
+    $("#new_client_form").submit(function(e){
+      e.preventDefault();
+      createClient($(this));
+    });
+  });
+</script>
