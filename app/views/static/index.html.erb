@@ -10,6 +10,22 @@ Count: <span id="count"></span><br/>
     <input type="submit" value="Enviar"/>
   </form>
 </fieldset>
+<br/>
+<fieldset>
+  <legend>Novo Telefone</legend>
+  <form id="new_phone_form">
+    <label for="client">Cliente: </label><select name="client" id="phone_client"></select><br/>
+    <label for="type">Tipo: </label>
+    <select name="phone_type">
+      <option value="mobile">Celular</option>
+      <option value="home">Casa</option>
+      <option value="work">Trabalho</option>
+    </select>
+    <br/>
+    <label for="content">Número: </label><input name="content" type="text"/><br/>
+    <input type="submit" value="Enviar"/>
+  </form>
+</fieldset>
 <script>
   function count() {
     Client.all().count(function(x) {
@@ -17,8 +33,10 @@ Count: <span id="count"></span><br/>
     });
   }
   function names() {
-    var names = $("#names");
-    names.html('');
+    var namesDiv = $("#names");
+    var namesSelect = $("#phone_client");
+    namesDiv.html('');
+    namesSelect.html('');
     Client.all().forEach(function(client){
       var li = $("<li/>", {
         class: "client",
@@ -31,13 +49,27 @@ Count: <span id="count"></span><br/>
       var del = $("<a/>", {href: "#", class: "delete", html: "X"});
       del.click(deleteClient);
       del.appendTo(li);
-      li.appendTo(names);
+      var phones = $("<ol/>");
+      client.phones().forEach(function(phone) {
+        var phoneLi = $("<li/>", {html: phone.phone_type() + ": " + phone.content()});
+        phoneLi.appendTo(phones);
+      });
+      phones.appendTo(li);
+      li.appendTo(namesDiv);
+      var option = $("<option/>", {
+        value: client.id,
+        html: client.name()
+      });
+      option.appendTo(namesSelect);
     });
   }
-  function createClient(form) {
+  function createObject(entity, form, dirtyProperties) {
+    if(!dirtyProperties) dirtyProperties = {};
     var data = form.serializeHash();
-    var client = new Client(data);
-    persistence.add(client);
+    var obj = new entity();
+    obj._data = data;
+    obj._dirtyProperties = dirtyProperties;
+    persistence.add(obj);
     persistence.flush();
     syncAll(updateAllDom);
     form.find("input[type='text']").each(function(i, el){
@@ -47,12 +79,11 @@ Count: <span id="count"></span><br/>
   function syncAll(callback) {
     console.log("Starting sync...");
     Client.syncAll(function(){
-      console.log("Sync done.")
-      if(callback){
-        console.log("Calling Callback...");
-        callback();
-      }
+      Phone.syncAll(function(){
+        if(callback) callback();
+      });
     });
+    if(callback) callback();
   }
   function updateAllDom() {
     names();
@@ -61,6 +92,7 @@ Count: <span id="count"></span><br/>
   function deleteClient(e) {
     e.preventDefault();
     Client.load($(this).parents("li").data("client-id"), function(client) {
+      client.phones().destroyAll();
       persistence.remove(client);
       persistence.flush();
       syncAll(updateAllDom);
@@ -108,7 +140,11 @@ Count: <span id="count"></span><br/>
 
     $("#new_client_form").submit(function(e){
       e.preventDefault();
-      createClient($(this));
+      createObject(Client, $(this));
+    });
+    $("#new_phone_form").submit(function(e){
+      e.preventDefault();
+      createObject(Phone, $(this), {client: true});
     });
   });
 </script>

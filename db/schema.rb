@@ -11,9 +11,9 @@
 #
 # It's strongly recommended to check this file into your version control system.
 
-ActiveRecord::Schema.define(:version => 20130731214646) do
+ActiveRecord::Schema.define(:version => 20130731214648) do
 
-  create_table "clients", :force => true do |t|
+  create_table "clients", :id => false, :force => true do |t|
     t.string   "persistence_id"
     t.string   "name"
     t.string   "address"
@@ -21,5 +21,20 @@ ActiveRecord::Schema.define(:version => 20130731214646) do
     t.datetime "created_at",                        :null => false
     t.datetime "updated_at",                        :null => false
   end
+
+  add_index "clients", ["persistence_id"], :name => "index_clients_on_persistence_id", :unique => true
+
+  create_table "phones", :id => false, :force => true do |t|
+    t.string   "persistence_id"
+    t.string   "phone_type"
+    t.string   "content"
+    t.boolean  "_removed",       :default => false
+    t.string   "client_id"
+    t.datetime "created_at",                        :null => false
+    t.datetime "updated_at",                        :null => false
+  end
+
+  add_index "phones", ["client_id"], :name => "index_phones_on_client_id"
+  add_index "phones", ["persistence_id"], :name => "index_phones_on_persistence_id", :unique => true
 
 end

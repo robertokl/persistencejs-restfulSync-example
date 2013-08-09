@@ -1,5 +1,7 @@
 class Client < ActiveRecord::Base
+  self.primary_key = :persistence_id
   attr_accessible :address, :name, :persistence_id
+  has_many :phones
 
   before_save :generate_persistence_id, if: lambda { |client| client.persistence_id.blank? }
 

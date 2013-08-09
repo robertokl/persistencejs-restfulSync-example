@@ -1,6 +1,6 @@
 class CreateClients < ActiveRecord::Migration
   def change
-    create_table :clients do |t|
+    create_table :clients, id: false do |t|
       t.string :persistence_id
       t.string :name
       t.string :address
@@ -8,5 +8,6 @@ class CreateClients < ActiveRecord::Migration
 
       t.timestamps
     end
+    add_index :clients, :persistence_id, :unique
   end
 end

@@ -48,6 +48,7 @@ persistence.restfulSync = {};
     objectId: "VARCHAR(40)"
   });
   persistence.restfulSync.RemoteData = persistence.define('_RestfulSync_RemoteData', {
+    entity: "VARCHAR(255)",
     lastSync: "BIGINT"
   });
 
@@ -57,18 +58,16 @@ persistence.restfulSync = {};
       Entity.meta.syncUri = uri;
     };
 
-    Entity.syncAll = function(session, uri, callback, isSynchronized) {
+    Entity.syncAll = function(session, uri, callback) {
       var args = argspec.getArgs(arguments, [
         { name: 'session', optional: true, check: function(obj) { return obj && obj.flush; }, defaultValue: persistence },
         { name: 'uri', optional: true, check: argspec.hasType('string'), defaultValue: this.meta.syncUri },
-        { name: 'callback', check: argspec.isCallback() },
-        { name: 'isSynchronized', optional: true, check: argspec.hasType('boolean'), defaultValue: true }
+        { name: 'callback', check: argspec.isCallback() }
       ]);
       persistence.restfulSync.helpers.syncAdded(args.session, args.uri, this.meta.name);
       persistence.restfulSync.helpers.syncUpdated(args.session, args.uri, this.meta.name);
       persistence.restfulSync.helpers.syncDeleted(args.session, args.uri, this.meta.name);
       persistence.restfulSync.helpers.retrieveFromRemote(args.session, args.uri, this, args.callback);
-      if (args.isSynchronized) args.callback();
     };
   });
 
@@ -81,18 +80,16 @@ persistence.restfulSync = {};
           if(obj._fromServer) {
             obj._fromServer = false;
           } else {
-            if(persistence.restfulSync.helpers.isPresent(obj._dirtyProperties)) {
-              if(obj._new) {
-                persistence.restfulSync.helpers.addSyncObject(session, persistence.restfulSync.NewResources, obj, obj._data);
-              } else {
-                var attributes = {};
-                for(var attr in obj._dirtyProperties) {
-                  if(obj._data.hasOwnProperty(attr)) {
-                    attributes[attr] = obj._data[attr];
-                  }
+            if(persistence.restfulSync.helpers.isPresent(obj._dirtyProperties) && !obj._new) {
+              var attributes = {};
+              for(var attr in obj._dirtyProperties) {
+                if(obj._data.hasOwnProperty(attr)) {
+                  attributes[attr] = obj._data[attr];
                 }
                 persistence.restfulSync.helpers.addSyncObject(session, persistence.restfulSync.UpdatedResources, obj, attributes);
               }
+            } else if(obj._new) {
+              persistence.restfulSync.helpers.addSyncObject(session, persistence.restfulSync.NewResources, obj, obj._data);
             }
           }
         }
@@ -129,6 +126,13 @@ persistence.restfulSync = {};
     }, function(obj){
       var data = JSON.parse(obj.attributes());
       data["persistence_id"] = obj.objectId();
+      for(var key in session.getMeta(obj.entity()).hasOne) {
+        if(data.hasOwnProperty(key)) {
+          data[key + "_id"] = data[key];
+          delete data[key];
+        }
+      }
+      console.log(data);
       return data;
     });
   }
@@ -165,7 +169,8 @@ persistence.restfulSync = {};
     });
   }
   persistence.restfulSync.helpers.retrieveFromRemote = function(session, uri, entity, callback) {
-    persistence.restfulSync.RemoteData.all().one(function(remoteData) {
+    if(!entity.meta.enableSync) return;
+    persistence.restfulSync.RemoteData.all().filter("entity", "=", entity.meta.name).one(function(remoteData) {
       var since = 0;
       if(remoteData) {
         since = remoteData.lastSync();
@@ -183,8 +188,8 @@ persistence.restfulSync = {};
       }
     });
   }
-  persistence.restfulSync.helpers.updateLastSync = function(session, json) {
-    persistence.restfulSync.RemoteData.all().one(function(remoteData) {
+  persistence.restfulSync.helpers.updateLastSync = function(session, json, entity) {
+    persistence.restfulSync.RemoteData.all().filter("entity", "=", entity.meta.name).one(function(remoteData) {
       var newRemoteData;
       if(remoteData) {
         newRemoteData = remoteData;
@@ -192,6 +197,7 @@ persistence.restfulSync = {};
         newRemoteData = new persistence.restfulSync.RemoteData();
       }
       newRemoteData.lastSync(json["now"]);
+      newRemoteData.entity(entity.meta.name);
       session.add(newRemoteData);
     });
   }
@@ -203,7 +209,7 @@ persistence.restfulSync = {};
         persistence.restfulSync.helpers.persistRemoteData(session, obj, entity);
       }
     }
-    callback(session, json);
+    callback(session, json, entity);
   }
   persistence.restfulSync.helpers.persistRemoteData = function(session, obj, entity) {
     entity.load(obj["persistence_id"], function(databaseObject){
@@ -218,13 +224,22 @@ persistence.restfulSync = {};
           }
           return;
         }
-        if(persistObject.hasOwnProperty(attr)) filteredObject[attr] = obj[attr];
+        if(persistObject.hasOwnProperty(attr.replace(/_id$/, ""))) filteredObject[attr.replace(/_id$/, "")] = obj[attr];
       }
       if(databaseObject){
         persistObject = databaseObject;
         persistObject._dirtyProperties = filteredObject;
       } else {
         persistObject.id = obj["persistence_id"];
+        var dirtyProperties = {}
+        for(key in persistence.getMeta(persistObject._type).hasOne) {
+          if(filteredObject[key]) {
+            dirtyProperties[key] = true
+          }
+        }
+        if(persistence.restfulSync.helpers.isPresent(dirtyProperties)) {
+          persistObject._dirtyProperties = dirtyProperties;
+        }
       }
       persistObject._data = filteredObject;
       persistObject._fromServer = true;
